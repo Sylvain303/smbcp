@@ -1,0 +1,123 @@
+#!/bin/bash
+#
+# copy a local file to a samba cifs storage
+#
+# Usage: smbcp [LOCALPATH] FILENAME
+#
+#  LOCALPATH can be passed or ommited
+#  FILENAME  can be passed as localpart of fullpath if LOCALPATH is ommited
+
+SHARE="//freebox_server/disque dur"
+SMB_PATH="/Téléchargements/A Télécharger"
+SMBUSER=freebox
+SMBPASS=mypass
+TMPDIR=$HOME/tmp
+
+scriptdir=$(dirname $(readlink -f "$0"))
+conffile="$scriptdir/smbcp.conf"
+
+loadconf() {
+    local conffile="$1"
+    if [[ -e "$conffile" ]]
+    then
+        source "$conffile"
+        return 0
+    fi
+    return 0
+}
+
+# séparation dossier et fichier 
+# nautilus: %d %b
+# thunar: smbcp %d %n
+
+mktmpdir() {
+    local tmpdir="$1"
+    # user tmpdir
+    if [[ ! -d "$tmpdir" ]]
+    then
+        mkdir "$tmpdir"
+    fi
+}
+
+readarg() {
+    d="$1"
+    f="$2"
+
+    # il faut séparer le path du fichier si ça vient de firefox
+    if [[ -z "$2" ]]
+    then
+        d="$(dirname "$1")"
+        f="$(basename "$1")"
+    fi
+}
+
+smbcopy() {
+    local debug=0
+    if [[ "$1" == '-g' ]]
+    then
+        debug=1
+        shift
+    fi
+
+    # local copy
+    local d=$1
+    local f=$2
+
+    echo "$$:$d/$f" >> "$TMPDIR/freebox.log"
+    smbclient "$SHARE" -U ${SMBUSER}%${SMBPASS} -c "cd \"$SMB_PATH\"; lcd \"$d\" ; put \"$f\"" >> \
+        $TMPDIR/smbcp.log 2>&1
+
+    # globals $r and $g
+    r=$?
+    local lastline=$(tail -1 $TMPDIR/smbcp.log)
+    local regexp='does not exist'
+    if [[ "$lastline" =~ $regexp ]]
+    then
+        g=1
+    else
+        g=0
+    fi
+
+    if [[ $debug -eq 1 ]]
+    then
+        echo "r=$r g=$g"
+    fi
+    return 0
+}
+
+notify() {
+    local lpath="$1"
+    local filename="$2"
+    local msg
+    local icon
+    if [[ $r -eq 0 && $g -eq 0 ]]
+    then
+        msg="fichier copié '$filename'"
+        # remove temp file
+        if [[ $lpath == "/tmp" ]]
+        then
+            rm "$lpath/$filename"
+        fi
+        icon=dialog-information
+    else
+        msg="erreur dans la copie de '$filename'"
+        icon=dialog-error
+    fi
+
+    notify-send 'À Télécharger' "$msg" --icon=$icon
+}
+
+main() {
+    loadconf "$scriptdir/smbcp.conf"
+    readarg "$@"
+    mktmpdir $TMPDIR
+    smbcopy "$d" "$f"
+    notify "$d" "$f"
+}
+
+[[ $0 != "$BASH_SOURCE" ]] && sourced=1 || sourced=0
+if  [[ $sourced -eq 0 ]]
+then
+    # pass positional argument as is
+    main "$@"
+fi
