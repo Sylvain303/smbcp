@@ -1,4 +1,4 @@
-# Samba copy wrapper with to notify-send
+# Samba copy wrapper with notify-send
 
 Shell wrapper for linux, tested on xfce with notify-send.
 
